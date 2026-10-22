@@ -30,6 +30,8 @@ li{display:flex;justify-content:space-between;align-items:center;padding:7px 0;b
 li span:first-child{color:var(--muted)}
 .empty{color:var(--muted);font-size:.88rem;padding:8px 0}
 .msg{color:var(--warn);font-size:.8rem;min-height:1.1em}
+textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font:inherit;font-size:.95rem;resize:vertical;margin-top:3px}
+.notes{margin-top:12px}
 .tot{margin-top:18px;text-align:right;color:var(--muted);font-size:.9rem}
 </style>
 </head>
@@ -48,7 +50,7 @@ const SUPABASE_KEY='sb_publishable_FDhQ03affjzeyhCHuoKulg_Rp7PdyLM';
 const db=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const T_ART="Pagamenti_artigiani",T_PAG="Pagamenti_pagamenti";
 const NAMES=["Idraulico","Imbianchino","Palchettista","Falegname"];
-const data={};NAMES.forEach(n=>data[n]={id:null,total:0,w:0,pays:[]});
+const data={};NAMES.forEach(n=>data[n]={id:null,total:0,w:0,note:"",pays:[]});
 const st=document.getElementById("status");
 const status=(m,err)=>{st.textContent=m;st.style.color=err?"var(--warn)":"var(--muted)"};
 const r2=v=>Math.round(v*100)/100;
@@ -64,7 +66,7 @@ function saveArt(n){
   timers[n]=setTimeout(async()=>{
     if(!data[n].id)return;
     status("Salvataggio…");
-    const r=await db.from(T_ART).update({totale:data[n].total,prelevato:data[n].w}).eq("id",data[n].id);
+    const r=await db.from(T_ART).update({totale:data[n].total,prelevato:data[n].w,note:data[n].note}).eq("id",data[n].id);
     r.error?status("Errore di salvataggio: "+r.error.message,true):status("Salvato su Supabase ✓");
   },400);
 }
@@ -87,11 +89,13 @@ NAMES.forEach((n,i)=>{
   </div>
   <div class="msg" id="m${i}"></div>
   <label id="p${i}">Pagamenti effettuati</label>
-  <ul id="l${i}"></ul>`;
+  <ul id="l${i}"></ul>
+  <div class="notes"><label>Note</label><textarea id="n${i}" rows="3" placeholder="Scrivi qui le note su ${n}…"></textarea></div>`;
   grid.appendChild(c);
   const $=id=>document.getElementById(id+i);
   $("t").addEventListener("input",()=>{data[n].total=parseFloat($("t").value)||0;saveArt(n);render(i)});
   $("w").addEventListener("input",()=>{data[n].w=parseFloat($("w").value)||0;saveArt(n);render(i)});
+  $("n").addEventListener("input",()=>{data[n].note=$("n").value;saveArt(n)});
   const add=async()=>{
     const a=parseFloat($("a").value);
     if(!(a>0)){$("m").textContent="Inserisci un importo valido.";return}
@@ -115,6 +119,7 @@ function render(i,keepMsg){
   const res=data[n].total-paid(n);
   if(document.activeElement!==$("t"))$("t").value=data[n].total||"";
   if(document.activeElement!==$("w"))$("w").value=data[n].w||"";
+  if(document.activeElement!==$("n"))$("n").value=data[n].note||"";
   const r=$("r");r.value=eur(res);r.className="resid"+(data[n].total>0&&res<=0.005?" zero":"");
   $("p").textContent=`Pagamenti effettuati (${eur(paid(n))})`;
   $("g").value=eur(Math.max(0,res-data[n].w));
@@ -145,7 +150,7 @@ async function load(){
     if(a.error)throw a.error;
     const p=await db.from(T_PAG).select("*").order("data").order("id");
     if(p.error)throw p.error;
-    a.data.forEach(r=>{const d=data[r.nome];if(d){d.id=r.id;d.total=+r.totale;d.w=+r.prelevato}});
+    a.data.forEach(r=>{const d=data[r.nome];if(d){d.id=r.id;d.total=+r.totale;d.w=+r.prelevato;d.note=r.note||""}});
     for(const n of NAMES){
       if(!data[n].id){
         const r=await db.from(T_ART).insert({nome:n}).select().single();
