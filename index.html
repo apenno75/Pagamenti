@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pagamenti artigiani</title>
+<style>
+:root{--bg:#f5f4f0;--card:#fff;--text:#1f2328;--muted:#6b7280;--line:#e3e1da;--accent:#2f6f4f;--warn:#b42318;--ok:#2f6f4f}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17191c;--card:#202328;--text:#eceae4;--muted:#9aa0a8;--line:#33373d;--accent:#5fb98a;--warn:#f08a7e;--ok:#5fb98a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.4}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:1.4rem;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 6px;font-size:.9rem}
+#status{font-size:.82rem;color:var(--muted);margin:0 0 16px;min-height:1.2em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.card h2{margin:0 0 12px;font-size:1.15rem}
+label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:3px}
+input{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font-size:1rem}
+input[readonly]{font-weight:700}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.resid{color:var(--warn)}.resid.zero{color:var(--ok)}
+.add{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin:14px 0 8px}
+button{padding:9px 14px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:.95rem;cursor:pointer}
+button.x{background:transparent;color:var(--muted);padding:2px 8px;font-size:1.1rem}
+ul{list-style:none;margin:0;padding:0;max-height:260px;overflow-y:auto}
+li{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-top:1px solid var(--line);font-size:.92rem}
+li span:first-child{color:var(--muted)}
+.empty{color:var(--muted);font-size:.88rem;padding:8px 0}
+.msg{color:var(--warn);font-size:.8rem;min-height:1.1em}
+.tot{margin-top:18px;text-align:right;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Pagamenti in contanti</h1>
+<p class="sub">Imposta il costo totale e registra ogni pagamento: il residuo si aggiorna da solo.</p>
+<p id="status"></p>
+<div class="grid" id="grid"></div>
+<p class="tot" id="tot"></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+const SUPABASE_URL='https://erukzvrtjnvyzjvfuirn.supabase.co';
+const SUPABASE_KEY='sb_publishable_FDhQ03affjzeyhCHuoKulg_Rp7PdyLM';
+const db=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const T_ART="Pagamenti_artigiani",T_PAG="Pagamenti_pagamenti";
+const NAMES=["Idraulico","Imbianchino","Palchettista"];
+const data={};NAMES.forEach(n=>data[n]={id:null,total:0,w:0,pays:[]});
+const st=document.getElementById("status");
+const status=(m,err)=>{st.textContent=m;st.style.color=err?"var(--warn)":"var(--muted)"};
+const r2=v=>Math.round(v*100)/100;
+const eur=v=>new Intl.NumberFormat("it-IT",{style:"currency",currency:"EUR"}).format(v);
+const today=()=>new Date().toISOString().slice(0,10);
+const fdate=s=>s?s.split("-").reverse().join("/"):"";
+const paid=n=>data[n].pays.reduce((a,p)=>a+p.amount,0);
+const grid=document.getElementById("grid");
+const timers={};
+
+function saveArt(n){
+  clearTimeout(timers[n]);
+  timers[n]=setTimeout(async()=>{
+    if(!data[n].id)return;
+    status("Salvataggio…");
+    const r=await db.from(T_ART).update({totale:data[n].total,prelevato:data[n].w}).eq("id",data[n].id);
+    r.error?status("Errore di salvataggio: "+r.error.message,true):status("Salvato su Supabase ✓");
+  },400);
+}
+
+NAMES.forEach((n,i)=>{
+  const c=document.createElement("section");c.className="card";
+  c.innerHTML=`<h2>${n}</h2>
+  <div class="row">
+    <div><label>Costo totale (€)</label><input type="number" min="0" step="0.01" id="t${i}" placeholder="0,00"></div>
+    <div><label>Residuo da pagare</label><input readonly id="r${i}"></div>
+  </div>
+  <div class="row">
+    <div><label>Prelevato, non ancora pagato (€)</label><input type="number" min="0" step="0.01" id="w${i}" placeholder="0,00"></div>
+    <div><label>Ancora da prelevare</label><input readonly id="g${i}"></div>
+  </div>
+  <div class="add">
+    <div><label>Data</label><input type="date" id="d${i}" value="${today()}"></div>
+    <div><label>Importo (€)</label><input type="number" min="0" step="0.01" id="a${i}" placeholder="0,00"></div>
+    <button id="b${i}">Aggiungi</button>
+  </div>
+  <div class="msg" id="m${i}"></div>
+  <label id="p${i}">Pagamenti effettuati</label>
+  <ul id="l${i}"></ul>`;
+  grid.appendChild(c);
+  const $=id=>document.getElementById(id+i);
+  $("t").addEventListener("input",()=>{data[n].total=parseFloat($("t").value)||0;saveArt(n);render(i)});
+  $("w").addEventListener("input",()=>{data[n].w=parseFloat($("w").value)||0;saveArt(n);render(i)});
+  const add=async()=>{
+    const a=parseFloat($("a").value);
+    if(!(a>0)){$("m").textContent="Inserisci un importo valido.";return}
+    if(!data[n].id){$("m").textContent="Database non ancora connesso.";return}
+    $("m").textContent=a>data[n].total-paid(n)+0.005?"Attenzione: supera il residuo.":"";
+    const amt=r2(a),fromW=Math.min(data[n].w,amt);
+    status("Salvataggio…");
+    const r=await db.from(T_PAG).insert({artigiano_id:data[n].id,data:$("d").value||null,importo:amt,da_prelevato:fromW}).select().single();
+    if(r.error){status("Errore di salvataggio: "+r.error.message,true);return}
+    data[n].w=r2(data[n].w-fromW);
+    data[n].pays.push({id:r.data.id,date:r.data.data,amount:amt,fromW:fromW});
+    $("a").value="";saveArt(n);render(i,true);
+  };
+  $("b").addEventListener("click",add);
+  $("a").addEventListener("keydown",e=>{if(e.key==="Enter")add()});
+  render(i,false);
+});
+
+function render(i,keepMsg){
+  const n=NAMES[i],$=id=>document.getElementById(id+i);
+  const res=data[n].total-paid(n);
+  if(document.activeElement!==$("t"))$("t").value=data[n].total||"";
+  if(document.activeElement!==$("w"))$("w").value=data[n].w||"";
+  const r=$("r");r.value=eur(res);r.className="resid"+(data[n].total>0&&res<=0.005?" zero":"");
+  $("p").textContent=`Pagamenti effettuati (${eur(paid(n))})`;
+  $("g").value=eur(Math.max(0,res-data[n].w));
+  const l=$("l");l.innerHTML="";
+  if(!data[n].pays.length)l.innerHTML='<div class="empty">Nessun pagamento registrato.</div>';
+  data[n].pays.forEach(p=>{
+    const li=document.createElement("li");
+    li.innerHTML=`<span>${fdate(p.date)}</span><span><b>${eur(p.amount)}</b> <button class="x" title="Elimina">×</button></span>`;
+    li.querySelector("button").onclick=async()=>{
+      status("Salvataggio…");
+      const d=await db.from(T_PAG).delete().eq("id",p.id);
+      if(d.error){status("Errore di salvataggio: "+d.error.message,true);return}
+      data[n].pays.splice(data[n].pays.indexOf(p),1);
+      data[n].w=r2(data[n].w+(p.fromW||0));
+      saveArt(n);render(i);
+    };
+    l.appendChild(li);
+  });
+  if(!keepMsg)$("m").textContent="";
+  const T=NAMES.reduce((a,x)=>a+data[x].total,0),R=NAMES.reduce((a,x)=>a+data[x].total-paid(x),0),W=NAMES.reduce((a,x)=>a+data[x].w,0);
+  document.getElementById("tot").innerHTML=`Totale complessivo: <b>${eur(T)}</b> · Residuo complessivo: <b>${eur(R)}</b> · Prelevato non pagato: <b>${eur(W)}</b>`;
+}
+
+async function load(){
+  try{
+    status("Caricamento dati…");
+    const a=await db.from(T_ART).select("*").order("id");
+    if(a.error)throw a.error;
+    const p=await db.from(T_PAG).select("*").order("data").order("id");
+    if(p.error)throw p.error;
+    a.data.forEach(r=>{const d=data[r.nome];if(d){d.id=r.id;d.total=+r.totale;d.w=+r.prelevato}});
+    for(const n of NAMES){
+      if(!data[n].id){
+        const r=await db.from(T_ART).insert({nome:n}).select().single();
+        if(r.error)throw r.error;
+        data[n].id=r.data.id;
+      }
+    }
+    p.data.forEach(r=>{
+      const n=NAMES.find(x=>data[x].id===r.artigiano_id);
+      if(n)data[n].pays.push({id:r.id,date:r.data,amount:+r.importo,fromW:+r.da_prelevato});
+    });
+    NAMES.forEach((n,i)=>render(i));
+    status("Connesso a Supabase ✓");
+  }catch(e){status("Errore di connessione: "+(e.message||e),true)}
+}
+load();
+</script>
+</body>
+</html>
