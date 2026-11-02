@@ -49,7 +49,7 @@ const SUPABASE_URL='https://erukzvrtjnvyzjvfuirn.supabase.co';
 const SUPABASE_KEY='sb_publishable_FDhQ03affjzeyhCHuoKulg_Rp7PdyLM';
 const db=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const T_ART="Pagamenti_artigiani",T_PAG="Pagamenti_pagamenti";
-const NAMES=["Idraulico","Imbianchino","Palchettista","Falegname"];
+const NAMES=["Idraulico","Imbianchino","Palchettista","Falegname","Porte blindate","Pergotenda"];
 const data={};NAMES.forEach(n=>data[n]={id:null,total:0,w:0,note:"",pays:[]});
 const st=document.getElementById("status");
 const status=(m,err)=>{st.textContent=m;st.style.color=err?"var(--warn)":"var(--muted)"};
