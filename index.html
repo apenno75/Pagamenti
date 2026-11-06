@@ -16,7 +16,13 @@ h1{font-size:1.4rem;margin:0 0 4px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 @media (max-width:700px){.grid{grid-template-columns:1fr}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
-.card h2{margin:0 0 12px;font-size:1.15rem}
+.card h2{margin:0;font-size:1.15rem}
+.head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.pw{display:flex;align-items:center;gap:10px}
+.pie{width:56px;height:56px;border-radius:50%;flex:none;border:1px solid var(--line)}
+.lg{font-size:.75rem;line-height:1.5;color:var(--muted);white-space:nowrap}
+.lg b{color:var(--text)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 label{display:block;font-size:.78rem;color:var(--muted);margin-bottom:3px}
 input{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);font-size:1rem}
 input[readonly]{font-weight:700}
@@ -73,7 +79,7 @@ function saveArt(n){
 
 NAMES.forEach((n,i)=>{
   const c=document.createElement("section");c.className="card";
-  c.innerHTML=`<h2>${n}</h2>
+  c.innerHTML=`<div class="head"><h2>${n}</h2><div class="pw"><div class="pie" id="c${i}"></div><div class="lg" id="k${i}"></div></div></div>
   <div class="row">
     <div><label>Costo totale (€)</label><input type="number" min="0" step="0.01" id="t${i}" placeholder="0,00"></div>
     <div><label>Residuo da pagare</label><input readonly id="r${i}"></div>
@@ -123,6 +129,15 @@ function render(i,keepMsg){
   const r=$("r");r.value=eur(res);r.className="resid"+(data[n].total>0&&res<=0.005?" zero":"");
   $("p").textContent=`Pagamenti effettuati (${eur(paid(n))})`;
   $("g").value=eur(Math.max(0,res-data[n].w));
+  const tot=data[n].total,pc=tot>0?Math.min(100,Math.max(0,paid(n)/tot*100)):0;
+  const pie=$("c"),lg=$("k");
+  if(tot>0){
+    pie.style.background=`conic-gradient(var(--accent) 0 ${pc}%,var(--warn) ${pc}% 100%)`;
+    lg.innerHTML=`<div><span class="dot" style="background:var(--accent)"></span>Pagato <b>${pc.toFixed(1).replace(".",",")}%</b></div><div><span class="dot" style="background:var(--warn)"></span>Resta <b>${(100-pc).toFixed(1).replace(".",",")}%</b></div>`;
+  }else{
+    pie.style.background="var(--line)";
+    lg.innerHTML="Imposta il costo<br>totale";
+  }
   const l=$("l");l.innerHTML="";
   if(!data[n].pays.length)l.innerHTML='<div class="empty">Nessun pagamento registrato.</div>';
   data[n].pays.forEach(p=>{
